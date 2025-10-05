@@ -120,6 +120,7 @@ const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
 
 let displayedMessages = new Set();
+let sentMessageIds = new Set(); // to prevent duplicate sends
 
 // consistent hash for messages without server ID
 function hashMessage(name, message, timestamp){
@@ -158,6 +159,11 @@ async function sendMessage(){
   const name = nameInput.value.trim()||'Admin';
   const message = msgInput.value.trim();
   if(!message) return;
+
+  // generate unique ID for this message to prevent duplicates
+  const id = name + message + Date.now();
+  if(sentMessageIds.has(id)) return; // already sent
+  sentMessageIds.add(id);
 
   try {
     const res = await fetch(`${API_URL}/messages`,{
