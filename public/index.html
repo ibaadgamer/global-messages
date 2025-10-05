@@ -87,9 +87,11 @@ const sendBtn = document.getElementById('send-btn');
 const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
-
 const messageDuration = 7000; // 7 seconds
-const displayedMessages = new Set(); // track messages currently on screen
+
+// Keep track of what’s visible and what’s already been seen
+const displayedMessages = new Set();
+const seenMessages = new Set();
 
 // ---------------- Admin panel toggle ----------------
 const openAdmin = document.getElementById('open-admin');
@@ -120,10 +122,11 @@ document.addEventListener('mouseup', ()=>isDragging=false);
 
 // ---------------- Show message ----------------
 function showMessage(name, message) {
-  const messageKey = name + ':' + message; // unique key for this user message
-  if(displayedMessages.has(messageKey)) return; // skip duplicates
+  const messageKey = name + ':' + message;
+  if(seenMessages.has(messageKey) || displayedMessages.has(messageKey)) return;
 
   displayedMessages.add(messageKey);
+  seenMessages.add(messageKey);
 
   const msg = document.createElement('div');
   msg.className = 'message';
@@ -131,13 +134,11 @@ function showMessage(name, message) {
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
 
-  // notification for others
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')){
     notifySound.currentTime = 0;
     notifySound.play().catch(()=>{});
   }
 
-  // remove after duration
   setTimeout(()=>{
     msg.remove();
     displayedMessages.delete(messageKey);
