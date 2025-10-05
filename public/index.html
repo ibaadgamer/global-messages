@@ -37,7 +37,7 @@ header{
 @keyframes fadeSlide{
   0%{opacity:0;transform:translateY(-20px)}
   10%{opacity:1;transform:translateY(0)}
-  80%{opacity:1}
+  90%{opacity:1}
   100%{opacity:0;transform:translateY(40px)}
 }
 #admin-panel{
@@ -118,30 +118,41 @@ const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
 
-const displayedMessages = new Map(); // key: server ID, value: message element
-const sentMessageIds = new Set(); // prevent duplicate sends
+const displayedMessages = new Map(); // key: stable message ID, value: message element
+const sentMessageIds = new Set();
+
+// stable hash for messages without server ID
+function hashMessage(name, message, timestamp){
+  let str = name + message + (timestamp || '');
+  let hash = 0;
+  for(let i=0;i<str.length;i++){
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
 
 function showMessage(name, message, id){
-  if(displayedMessages.has(id)) return; // message already displayed
+  if(displayedMessages.has(id)) return;
 
   const msg = document.createElement('div');
   msg.className = 'message';
   const label = name.toLowerCase() === 'ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
-
   displayedMessages.set(id, msg);
 
   // play notification if message is from someone else
-  if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')) {
+  if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')){
     notifySound.currentTime = 0;
     notifySound.play().catch(()=>{});
   }
 
-  setTimeout(()=>{
+  // remove message AFTER 7 seconds (animation duration)
+  msg.addEventListener('animationend', ()=>{
     msg.remove();
     displayedMessages.delete(id);
-  }, 7000);
+  });
 }
 
 async function sendMessage(){
@@ -149,12 +160,13 @@ async function sendMessage(){
   const message = msgInput.value.trim();
   if(!message) return;
 
-  const id = name + message + Date.now();
-  if(sentMessageIds.has(id)) return; 
+  // stable ID for this sent message
+  const id = hashMessage(name, message, Date.now());
+  if(sentMessageIds.has(id)) return;
   sentMessageIds.add(id);
 
   try {
-    const res = await fetch(`${API_URL}/messages`, {
+    const res = await fetch(`${API_URL}/messages`,{
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({name, message})
@@ -173,19 +185,19 @@ msgInput.addEventListener('keydown', e=>{
 
 // ---------------- Fetch messages ----------------
 async function fetchMessages(){
-  try {
+  try{
     const res = await fetch(`${API_URL}/messages`);
     if(!res.ok) return;
     const data = await res.json();
     data.forEach(m => {
-      // use server-provided unique ID
-      if(!m.id) return; // skip messages without ID
-      showMessage(m.name, m.message, m.id);
+      // stable ID: use server ID if available, else hash
+      const id = m.id || hashMessage(m.name, m.message, m.timestamp);
+      showMessage(m.name, m.message, id);
     });
   } catch(err){ console.error('GET error:', err); }
 }
 
-// Initial fetch + polling
+// initial fetch + polling
 fetchMessages();
 setInterval(fetchMessages, 3000);
 </script>
