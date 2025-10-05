@@ -82,14 +82,14 @@ header{
 
 <script>
 const API_URL = 'https://global-messages.onrender.com';
-
 const messagesDiv = document.getElementById('messages');
 const sendBtn = document.getElementById('send-btn');
 const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
 
-const messageDuration = 7000; // 7 seconds on screen
+const messageDuration = 7000; // 7 seconds
+const displayedMessages = new Set(); // track messages currently on screen
 
 // ---------------- Admin panel toggle ----------------
 const openAdmin = document.getElementById('open-admin');
@@ -119,26 +119,28 @@ document.addEventListener('mousemove', e=>{
 document.addEventListener('mouseup', ()=>isDragging=false);
 
 // ---------------- Show message ----------------
-function generateId() {
-  return 'msg_' + Math.random().toString(36).substr(2, 9);
-}
-
 function showMessage(name, message) {
-  const id = generateId(); // unique per message
+  const messageKey = name + ':' + message; // unique key for this user message
+  if(displayedMessages.has(messageKey)) return; // skip duplicates
+
+  displayedMessages.add(messageKey);
+
   const msg = document.createElement('div');
   msg.className = 'message';
   const label = name.toLowerCase()==='ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
 
+  // notification for others
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')){
     notifySound.currentTime = 0;
     notifySound.play().catch(()=>{});
   }
 
-  // Remove message after animation duration
-  setTimeout(() => {
+  // remove after duration
+  setTimeout(()=>{
     msg.remove();
+    displayedMessages.delete(messageKey);
   }, messageDuration);
 }
 
