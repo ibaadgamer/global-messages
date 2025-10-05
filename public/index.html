@@ -83,10 +83,17 @@ header{
 <script>
 const API_URL = 'https://global-messages.onrender.com';
 
+const messagesDiv = document.getElementById('messages');
+const sendBtn = document.getElementById('send-btn');
+const nameInput = document.getElementById('admin-name');
+const msgInput = document.getElementById('admin-message');
+const notifySound = document.getElementById('notify-sound');
+
+const messageDuration = 7000; // 7 seconds on screen
+
 // ---------------- Admin panel toggle ----------------
 const openAdmin = document.getElementById('open-admin');
 const adminPanel = document.getElementById('admin-panel');
-
 openAdmin.addEventListener('click', () => {
   adminPanel.style.display = adminPanel.style.display==='block'?'none':'block';
 });
@@ -111,93 +118,66 @@ document.addEventListener('mousemove', e=>{
 });
 document.addEventListener('mouseup', ()=>isDragging=false);
 
-// ---------------- Messages ----------------
-const messagesDiv = document.getElementById('messages');
-const sendBtn = document.getElementById('send-btn');
-const nameInput = document.getElementById('admin-name');
-const msgInput = document.getElementById('admin-message');
-const notifySound = document.getElementById('notify-sound');
-
-const displayedMessages = new Map(); // key: stable message ID, value: message element
-const sentMessageIds = new Set();
-
-// stable hash for messages without server ID
-function hashMessage(name, message, timestamp){
-  let str = name + message + (timestamp || '');
-  let hash = 0;
-  for(let i=0;i<str.length;i++){
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
+// ---------------- Show message ----------------
+function generateId() {
+  return 'msg_' + Math.random().toString(36).substr(2, 9);
 }
 
-function showMessage(name, message, id){
-  if(displayedMessages.has(id)) return;
-
+function showMessage(name, message) {
+  const id = generateId(); // unique per message
   const msg = document.createElement('div');
   msg.className = 'message';
-  const label = name.toLowerCase() === 'ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
+  const label = name.toLowerCase()==='ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
-  displayedMessages.set(id, msg);
 
-  // play notification if message is from someone else
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')){
     notifySound.currentTime = 0;
     notifySound.play().catch(()=>{});
   }
 
-  // remove message AFTER 7 seconds (animation duration)
-  msg.addEventListener('animationend', ()=>{
+  // Remove message after animation duration
+  setTimeout(() => {
     msg.remove();
-    displayedMessages.delete(id);
-  });
+  }, messageDuration);
 }
 
-async function sendMessage(){
+// ---------------- Send message ----------------
+sendBtn.addEventListener('click', sendMessage);
+msgInput.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+});
+
+function sendMessage(){
   const name = nameInput.value.trim() || 'Admin';
   const message = msgInput.value.trim();
   if(!message) return;
 
-  // stable ID for this sent message
-  const id = hashMessage(name, message, Date.now());
-  if(sentMessageIds.has(id)) return;
-  sentMessageIds.add(id);
+  fetch(`${API_URL}/messages`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, message})
+  }).catch(err => console.error(err));
 
-  try {
-    const res = await fetch(`${API_URL}/messages`,{
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, message})
-    });
-    if(!res.ok) console.error('POST failed:', res.status, await res.text());
-  } catch(err){ console.error('POST error:', err); }
-
-  msgInput.value='';
+  msgInput.value = '';
   fetchMessages();
 }
 
-sendBtn.addEventListener('click', sendMessage);
-msgInput.addEventListener('keydown', e=>{
-  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); }
-});
-
 // ---------------- Fetch messages ----------------
 async function fetchMessages(){
-  try{
-    const res = await fetch(`${API_URL}/messages`);
+  try {
+    const res = await fetch(API_URL + '/messages');
     if(!res.ok) return;
     const data = await res.json();
     data.forEach(m => {
-      // stable ID: use server ID if available, else hash
-      const id = m.id || hashMessage(m.name, m.message, m.timestamp);
-      showMessage(m.name, m.message, id);
+      const name = m.name || 'Admin';
+      const message = m.message || '';
+      showMessage(name, message);
     });
-  } catch(err){ console.error('GET error:', err); }
+  } catch(err){ console.error(err); }
 }
 
-// initial fetch + polling
+// Initial fetch + polling
 fetchMessages();
 setInterval(fetchMessages, 3000);
 </script>
