@@ -115,18 +115,27 @@ const sendBtn = document.getElementById('send-btn');
 const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 
-function showMessage(name,message){
-  const msg=document.createElement('div');
-  msg.className='message';
-  const label=name.toLowerCase()==='ibaad'?`<span class="name">${name} 🛠️:</span>`:`<span class="name">${name}:</span>`;
-  msg.innerHTML=`${label} ${message}`;
+let displayedMessages = new Set();
+
+function showMessage(name, message, id){
+  if(displayedMessages.has(id)) return;
+  displayedMessages.add(id);
+
+  const msg = document.createElement('div');
+  msg.className = 'message';
+  const label = name.toLowerCase()==='ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
+  msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
-  setTimeout(()=>msg.remove(),7000);
+
+  setTimeout(()=>{
+    msg.remove();
+    displayedMessages.delete(id);
+  },7000);
 }
 
 async function sendMessage(){
-  const name=nameInput.value.trim()||'Admin';
-  const message=msgInput.value.trim();
+  const name = nameInput.value.trim()||'Admin';
+  const message = msgInput.value.trim();
   if(!message) return;
 
   try {
@@ -156,8 +165,11 @@ async function fetchMessages(){
       return;
     }
     const data = await res.json();
-    messagesDiv.innerHTML='';
-    data.forEach(m=>showMessage(m.name,m.message));
+    data.forEach(m => {
+      // use message timestamp or unique id as fallback
+      const id = m.id || m.timestamp || (m.name + m.message + Math.random());
+      showMessage(m.name, m.message, id);
+    });
   } catch(err){ console.error('GET error:', err); }
 }
 
