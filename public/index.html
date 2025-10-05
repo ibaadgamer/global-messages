@@ -142,10 +142,10 @@ function showMessage(name, message, id){
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
 
-  // Play notification sound if message is from someone else
+  // play notification if not admin yourself
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')) {
     notifySound.currentTime = 0;
-    notifySound.play().catch(()=>{});
+    notifySound.play().catch(()=>{}); // ignore autoplay block
   }
 
   setTimeout(()=>{
