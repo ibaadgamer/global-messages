@@ -32,7 +32,7 @@ header{
   animation:fadeSlide 7s forwards;
 }
 .message .name{
-  font-weight:800;margin-right:8px;
+  color:var(--username-color);font-weight:800;margin-right:8px;
 }
 @keyframes fadeSlide{
   0%{opacity:0;transform:translateY(-20px)}
@@ -47,13 +47,10 @@ header{
   box-shadow:0 0 20px var(--accent);display:none;cursor:move;z-index:9999;
 }
 #admin-panel h3{margin:0;text-align:center;color:var(--accent)}
-#admin-panel input,#admin-panel textarea,#admin-panel select{
+#admin-panel input,#admin-panel textarea{
   width:100%;background:#111;color:var(--accent);
   border:1px solid var(--accent);padding:8px;margin-bottom:12px;
   border-radius:6px;font-family:inherit;resize:none;
-}
-#admin-panel input[type="color"]{
-  padding:2px;height:40px;cursor:pointer;
 }
 #admin-panel button{
   width:100%;background:var(--accent);border:none;color:#000;
@@ -61,6 +58,11 @@ header{
   transition:all 0.2s ease;
 }
 #admin-panel button:hover{background:#00ffaa;transform:scale(1.02)}
+#open-admin{
+  position:fixed;top:10px;left:10px;z-index:9999;
+  background:var(--accent);color:#000;padding:6px 12px;border:none;
+  border-radius:6px;font-weight:bold;cursor:pointer;
+}
 </style>
 </head>
 <body>
@@ -70,11 +72,11 @@ header{
 <div id="admin-panel">
 <h3>Admin Broadcast</h3>
 <input id="admin-name" placeholder="Name"/>
-<label for="username-color">Username Color:</label>
-<input type="color" id="username-color" value="#ff4040"/>
 <textarea id="admin-message" placeholder="Type your message..."></textarea>
 <button id="send-btn">Send Broadcast</button>
 </div>
+
+<button id="open-admin">Admin</button>
 
 <audio id="notify-sound" src="https://actions.google.com/sounds/v1/alarms/medium_bell_ring.ogg" preload="auto"></audio>
 
@@ -85,15 +87,20 @@ const sendBtn = document.getElementById('send-btn');
 const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
-const colorPicker = document.getElementById('username-color');
+const messageDuration = 7000; // 7 seconds
 
-const messageDuration = 7000;
+// Keep track of what’s visible and what’s already been seen
 const displayedMessages = new Set();
+const seenMessages = new Set();
 
-// ---------------- Admin panel toggle (Shift+Alt+X) ----------------
+// ---------------- Admin panel toggle ----------------
+const openAdmin = document.getElementById('open-admin');
 const adminPanel = document.getElementById('admin-panel');
+openAdmin.addEventListener('click', () => {
+  adminPanel.style.display = adminPanel.style.display==='block'?'none':'block';
+});
 window.addEventListener('keydown', e=>{
-  if((e.shiftKey && e.altKey && e.code==='KeyX')){
+  if((e.altKey && e.code==='KeyX') || (e.shiftKey && e.altKey && e.code==='KeyX')){
       adminPanel.style.display = adminPanel.style.display==='block'?'none':'block';
   }
 });
@@ -114,19 +121,19 @@ document.addEventListener('mousemove', e=>{
 document.addEventListener('mouseup', ()=>isDragging=false);
 
 // ---------------- Show message ----------------
-function showMessage(name, message, color='#ff4040') {
+function showMessage(name, message) {
   const messageKey = name + ':' + message;
-  if(displayedMessages.has(messageKey)) return;
+  if(seenMessages.has(messageKey) || displayedMessages.has(messageKey)) return;
 
   displayedMessages.add(messageKey);
+  seenMessages.add(messageKey);
 
   const msg = document.createElement('div');
   msg.className = 'message';
-  const label = `<span class="name" style="color:${color}">${name}:</span>`;
+  const label = name.toLowerCase()==='ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
 
-  // Play sound if not our own message
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')){
     notifySound.currentTime = 0;
     notifySound.play().catch(()=>{});
@@ -147,13 +154,12 @@ msgInput.addEventListener('keydown', e=>{
 function sendMessage(){
   const name = nameInput.value.trim() || 'Admin';
   const message = msgInput.value.trim();
-  const color = colorPicker.value || '#ff4040';
   if(!message) return;
 
   fetch(`${API_URL}/messages`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, message, color})
+    body: JSON.stringify({name, message})
   }).catch(err => console.error(err));
 
   msgInput.value = '';
@@ -169,8 +175,7 @@ async function fetchMessages(){
     data.forEach(m => {
       const name = m.name || 'Admin';
       const message = m.message || '';
-      const color = m.color || '#ff4040';
-      showMessage(name, message, color);
+      showMessage(name, message);
     });
   } catch(err){ console.error(err); }
 }
