@@ -78,7 +78,6 @@ header{
 
 <button id="open-admin">Admin</button>
 
-<!-- Calm notification sound -->
 <audio id="notify-sound" src="https://actions.google.com/sounds/v1/alarms/medium_bell_ring.ogg" preload="auto"></audio>
 
 <script>
@@ -119,22 +118,11 @@ const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
 
-const displayedMessages = new Map(); // key: id, value: message element
-const sentMessageIds = new Set(); // track sent messages to prevent duplicates
-
-// hash for messages without server ID
-function hashMessage(name, message, timestamp){
-  let str = name + message + (timestamp || '');
-  let hash = 0;
-  for(let i=0;i<str.length;i++){
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
-}
+const displayedMessages = new Map(); // key: server ID, value: message element
+const sentMessageIds = new Set(); // prevent duplicate sends
 
 function showMessage(name, message, id){
-  if(displayedMessages.has(id)) return; // already on screen
+  if(displayedMessages.has(id)) return; // message already displayed
 
   const msg = document.createElement('div');
   msg.className = 'message';
@@ -150,7 +138,7 @@ function showMessage(name, message, id){
     notifySound.play().catch(()=>{});
   }
 
-  setTimeout(() => {
+  setTimeout(()=>{
     msg.remove();
     displayedMessages.delete(id);
   }, 7000);
@@ -162,14 +150,14 @@ async function sendMessage(){
   if(!message) return;
 
   const id = name + message + Date.now();
-  if(sentMessageIds.has(id)) return; // prevent duplicate send
+  if(sentMessageIds.has(id)) return; 
   sentMessageIds.add(id);
 
   try {
-    const res = await fetch(`${API_URL}/messages`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,message})
+    const res = await fetch(`${API_URL}/messages`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, message})
     });
     if(!res.ok) console.error('POST failed:', res.status, await res.text());
   } catch(err){ console.error('POST error:', err); }
@@ -178,7 +166,7 @@ async function sendMessage(){
   fetchMessages();
 }
 
-sendBtn.addEventListener('click',sendMessage);
+sendBtn.addEventListener('click', sendMessage);
 msgInput.addEventListener('keydown', e=>{
   if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); }
 });
@@ -190,8 +178,9 @@ async function fetchMessages(){
     if(!res.ok) return;
     const data = await res.json();
     data.forEach(m => {
-      const id = m.id || hashMessage(m.name, m.message, m.timestamp);
-      showMessage(m.name, m.message, id);
+      // use server-provided unique ID
+      if(!m.id) return; // skip messages without ID
+      showMessage(m.name, m.message, m.id);
     });
   } catch(err){ console.error('GET error:', err); }
 }
