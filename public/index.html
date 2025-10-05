@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Broadcast</title>
+<style>
+:root {
+  --accent:#00ff99;
+  --panel-bg:rgba(20,20,20,0.95);
+  --msg-bg:rgba(0,0,0,0.55);
+  --username-color:#ff4040;
+}
+body{
+  margin:0;font-family:"Segoe UI",Arial,sans-serif;
+  background:linear-gradient(135deg,#62b160 0%,#3b8d45 100%);
+  color:#fff;overflow:hidden;height:100vh;transition:background 0.5s;
+}
+header{
+  text-align:center;padding:30px 10px;font-size:36px;font-weight:700;
+  text-shadow:0 0 15px rgba(0,0,0,0.3);
+}
+#messages{
+  position:fixed;top:25%;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column-reverse;align-items:center;gap:16px;
+  width:95%;max-width:1200px;pointer-events:none;
+}
+.message{
+  background: var(--msg-bg);color:#fff;padding:25px 40px;
+  border-radius:25px;font-size:43px;font-weight:700;
+  box-shadow:0 8px 25px rgba(0,0,0,0.35);backdrop-filter:blur(12px);
+  animation:fadeSlide 7s forwards;
+}
+.message .name{
+  color:var(--username-color);font-weight:800;margin-right:8px;
+}
+@keyframes fadeSlide{
+  0%{opacity:0;transform:translateY(-20px)}
+  10%{opacity:1;transform:translateY(0)}
+  80%{opacity:1}
+  100%{opacity:0;transform:translateY(40px)}
+}
+#admin-panel{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--panel-bg);color:white;padding:22px;
+  border:2px solid var(--accent);border-radius:12px;width:320px;
+  box-shadow:0 0 20px var(--accent);display:none;cursor:move;z-index:9999;
+}
+#admin-panel h3{margin:0;text-align:center;color:var(--accent)}
+#admin-panel input,#admin-panel textarea{
+  width:100%;background:#111;color:var(--accent);
+  border:1px solid var(--accent);padding:8px;margin-bottom:12px;
+  border-radius:6px;font-family:inherit;resize:none;
+}
+#admin-panel button{
+  width:100%;background:var(--accent);border:none;color:#000;
+  font-weight:bold;padding:10px;border-radius:6px;cursor:pointer;
+  transition:all 0.2s ease;
+}
+#admin-panel button:hover{background:#00ffaa;transform:scale(1.02)}
+#open-admin{
+  position:fixed;top:10px;left:10px;z-index:9999;
+  background:var(--accent);color:#000;padding:6px 12px;border:none;
+  border-radius:6px;font-weight:bold;cursor:pointer;
+}
+</style>
+</head>
+<body>
+<header>🛠️ Global Broadcast</header>
+<div id="messages"></div>
+
+<div id="admin-panel">
+<h3>Admin Broadcast</h3>
+<input id="admin-name" placeholder="Name"/>
+<textarea id="admin-message" placeholder="Type your message..."></textarea>
+<button id="send-btn">Send Broadcast</button>
+</div>
+
+<button id="open-admin">Admin</button>
+
+<script>
+const API_URL = 'https://global-messages.onrender.com';
+
+// ---------------- Admin panel toggle ----------------
+const openAdmin = document.getElementById('open-admin');
+const adminPanel = document.getElementById('admin-panel');
+
+openAdmin.addEventListener('click', () => {
+  adminPanel.style.display = adminPanel.style.display==='block'?'none':'block';
+});
+window.addEventListener('keydown', e=>{
+  if((e.altKey && e.code==='KeyX') || (e.shiftKey && e.altKey && e.code==='KeyX')){
+      adminPanel.style.display = adminPanel.style.display==='block'?'none':'block';
+  }
+});
+
+// ---------------- Draggable panel ----------------
+let isDragging=false, offsetX, offsetY;
+adminPanel.addEventListener('mousedown', e=>{
+  isDragging=true;
+  offsetX=e.clientX-adminPanel.offsetLeft;
+  offsetY=e.clientY-adminPanel.offsetTop;
+});
+document.addEventListener('mousemove', e=>{
+  if(isDragging){
+    adminPanel.style.left=e.clientX-offsetX+'px';
+    adminPanel.style.top=e.clientY-offsetY+'px';
+  }
+});
+document.addEventListener('mouseup', ()=>isDragging=false);
+
+// ---------------- Messages ----------------
+const messagesDiv = document.getElementById('messages');
+const sendBtn = document.getElementById('send-btn');
+const nameInput = document.getElementById('admin-name');
+const msgInput = document.getElementById('admin-message');
+
+function showMessage(name,message){
+  const msg=document.createElement('div');
+  msg.className='message';
+  const label=name.toLowerCase()==='ibaad'?`<span class="name">${name} 🛠️:</span>`:`<span class="name">${name}:</span>`;
+  msg.innerHTML=`${label} ${message}`;
+  messagesDiv.appendChild(msg);
+  setTimeout(()=>msg.remove(),7000);
+}
+
+async function sendMessage(){
+  const name=nameInput.value.trim()||'Admin';
+  const message=msgInput.value.trim();
+  if(!message) return;
+
+  try {
+    const res = await fetch(`${API_URL}/messages`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,message})
+    });
+    if(!res.ok) console.error('POST failed:', res.status, await res.text());
+  } catch(err){ console.error('POST error:', err); }
+
+  msgInput.value='';
+  fetchMessages();
+}
+
+sendBtn.addEventListener('click',sendMessage);
+msgInput.addEventListener('keydown', e=>{
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); }
+});
+
+// ---------------- Fetch messages ----------------
+async function fetchMessages(){
+  try {
+    const res = await fetch(`${API_URL}/messages`);
+    if(!res.ok) {
+      console.error('GET failed:', res.status, await res.text());
+      return;
+    }
+    const data = await res.json();
+    messagesDiv.innerHTML='';
+    data.forEach(m=>showMessage(m.name,m.message));
+  } catch(err){ console.error('GET error:', err); }
+}
+
+// Initial fetch + polling
+fetchMessages();
+setInterval(fetchMessages,3000);
+</script>
+</body>
+</html>
