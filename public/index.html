@@ -119,10 +119,10 @@ const nameInput = document.getElementById('admin-name');
 const msgInput = document.getElementById('admin-message');
 const notifySound = document.getElementById('notify-sound');
 
-let displayedMessages = new Set();
-let sentMessageIds = new Set(); // to prevent duplicate sends
+const displayedMessages = new Map(); // key: id, value: message element
+const sentMessageIds = new Set(); // track sent messages to prevent duplicates
 
-// consistent hash for messages without server ID
+// hash for messages without server ID
 function hashMessage(name, message, timestamp){
   let str = name + message + (timestamp || '');
   let hash = 0;
@@ -134,14 +134,15 @@ function hashMessage(name, message, timestamp){
 }
 
 function showMessage(name, message, id){
-  if(displayedMessages.has(id)) return; // already shown
-  displayedMessages.add(id);
+  if(displayedMessages.has(id)) return; // already on screen
 
   const msg = document.createElement('div');
   msg.className = 'message';
-  const label = name.toLowerCase()==='ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
+  const label = name.toLowerCase() === 'ibaad' ? `<span class="name">${name} 🛠️:</span>` : `<span class="name">${name}:</span>`;
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
+
+  displayedMessages.set(id, msg);
 
   // play notification if message is from someone else
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')) {
@@ -149,20 +150,19 @@ function showMessage(name, message, id){
     notifySound.play().catch(()=>{});
   }
 
-  setTimeout(()=>{
+  setTimeout(() => {
     msg.remove();
     displayedMessages.delete(id);
-  },7000);
+  }, 7000);
 }
 
 async function sendMessage(){
-  const name = nameInput.value.trim()||'Admin';
+  const name = nameInput.value.trim() || 'Admin';
   const message = msgInput.value.trim();
   if(!message) return;
 
-  // generate unique ID for this message to prevent duplicates
   const id = name + message + Date.now();
-  if(sentMessageIds.has(id)) return; // already sent
+  if(sentMessageIds.has(id)) return; // prevent duplicate send
   sentMessageIds.add(id);
 
   try {
@@ -187,13 +187,9 @@ msgInput.addEventListener('keydown', e=>{
 async function fetchMessages(){
   try {
     const res = await fetch(`${API_URL}/messages`);
-    if(!res.ok) {
-      console.error('GET failed:', res.status, await res.text());
-      return;
-    }
+    if(!res.ok) return;
     const data = await res.json();
     data.forEach(m => {
-      // use server-provided ID if available, else hash with timestamp fallback
       const id = m.id || hashMessage(m.name, m.message, m.timestamp);
       showMessage(m.name, m.message, id);
     });
@@ -202,7 +198,7 @@ async function fetchMessages(){
 
 // Initial fetch + polling
 fetchMessages();
-setInterval(fetchMessages,3000);
+setInterval(fetchMessages, 3000);
 </script>
 </body>
 </html>
