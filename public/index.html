@@ -121,10 +121,10 @@ const notifySound = document.getElementById('notify-sound');
 
 let displayedMessages = new Set();
 
-// consistent hash for each message
-function hashMessage(name, message){
+// consistent hash for messages without server ID
+function hashMessage(name, message, timestamp){
+  let str = name + message + (timestamp || '');
   let hash = 0;
-  const str = name + message;
   for(let i=0;i<str.length;i++){
     hash = ((hash << 5) - hash) + str.charCodeAt(i);
     hash |= 0;
@@ -133,7 +133,7 @@ function hashMessage(name, message){
 }
 
 function showMessage(name, message, id){
-  if(displayedMessages.has(id)) return;
+  if(displayedMessages.has(id)) return; // already shown
   displayedMessages.add(id);
 
   const msg = document.createElement('div');
@@ -142,10 +142,10 @@ function showMessage(name, message, id){
   msg.innerHTML = `${label} ${message}`;
   messagesDiv.appendChild(msg);
 
-  // play notification if not admin yourself
+  // play notification if message is from someone else
   if(name.toLowerCase() !== (nameInput.value.trim().toLowerCase() || 'admin')) {
     notifySound.currentTime = 0;
-    notifySound.play().catch(()=>{}); // ignore autoplay block
+    notifySound.play().catch(()=>{});
   }
 
   setTimeout(()=>{
@@ -187,7 +187,8 @@ async function fetchMessages(){
     }
     const data = await res.json();
     data.forEach(m => {
-      const id = m.id || hashMessage(m.name, m.message);
+      // use server-provided ID if available, else hash with timestamp fallback
+      const id = m.id || hashMessage(m.name, m.message, m.timestamp);
       showMessage(m.name, m.message, id);
     });
   } catch(err){ console.error('GET error:', err); }
