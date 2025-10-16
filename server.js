@@ -1,74 +1,52 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const bodyParser = require('body-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-const DATA_FILE = path.join(__dirname, 'messages.json');
+/* ---------- In-memory storage ---------- */
+let messages = []; // { id, name, message, duration, ts }
+let onlineDevices = new Map(); // UID => lastPing (ms)
 
-// Helper to load messages from JSON
-function loadMessages() {
-  if (!fs.existsSync(DATA_FILE)) return [];
-  const data = fs.readFileSync(DATA_FILE, 'utf-8');
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
+/* ---------- Helpers ---------- */
+function cleanupOnline(){
+  const now = Date.now();
+  for(const [uid,lastPing] of onlineDevices.entries()){
+    if(now - lastPing > 15000) onlineDevices.delete(uid); // remove if no ping for 15s
   }
 }
 
-// Helper to save messages to JSON
-function saveMessages(messages) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(messages, null, 2));
-}
+/* ---------- Routes ---------- */
 
-// Generate a unique ID using crypto
-function uuidv4() {
-  return crypto.randomUUID();
-}
-
-// In-memory online users tracking
-const onlineUsers = new Set();
-
-// API endpoints
-app.get('/messages', (req, res) => {
-  const messages = loadMessages();
-  res.json(messages);
+// GET all messages
+app.get('/messages', (req,res)=>{
+  res.json(messages.slice(-100)); // return last 100 messages
 });
 
-app.post('/messages', (req, res) => {
-  const { name, message, color } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
-
-  const messages = loadMessages();
-  const msgObj = {
-    _id: uuidv4(),
-    name: name || 'Admin',
-    message,
-    color: color || '#ff4040',
-    timestamp: Date.now()
-  };
-
-  messages.push(msgObj);
-  saveMessages(messages);
-
-  res.json({ success: true, message: msgObj });
+// POST new message
+app.post('/messages', (req,res)=>{
+  const { name, message, duration } = req.body;
+  if(!message) return res.status(400).json({error:'Message required'});
+  const id = Date.now() + '-' + Math.random().toString(36).substr(2,5);
+  const ts = Date.now();
+  messages.push({ id, name: name||'Admin', message, duration: duration||7, ts });
+  res.json({success:true});
 });
 
-app.get('/online-count', (req, res) => {
-  // Optionally, you can pass a query ?add=name to track users
-  const add = req.query.add;
-  if (add) onlineUsers.add(add);
-  res.json({ online: onlineUsers.size, count: onlineUsers.size });
+// GET online count + device list
+app.get('/online-count', (req,res)=>{
+  const addUID = req.query.add;
+  if(addUID) onlineDevices.set(addUID, Date.now());
+
+  cleanupOnline();
+
+  const devices = Array.from(onlineDevices.entries()).map(([id,lastPing])=>({ id, lastPing }));
+  res.json({ count: onlineDevices.size, devices });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+/* ---------- Start server ---------- */
+app.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
