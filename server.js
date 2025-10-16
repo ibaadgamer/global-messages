@@ -1,30 +1,56 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-
 const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// In-memory messages array (or use DB if needed)
-let messages = [];
+// In-memory storage
+let messages = []; // { name, message, color, timestamp }
+let heartbeats = {}; // { visitorId: lastSeenTimestamp }
 
-// Serve the front-end
-app.use(express.static(path.join(__dirname, 'public')));
-
-// API endpoints
+// ----------- Messages API -----------
 app.get('/messages', (req, res) => {
   res.json(messages);
 });
 
 app.post('/messages', (req, res) => {
-  const { name, message } = req.body;
+  const { name, message, color } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
-  messages.push({ name: name || 'Admin', message, timestamp: Date.now() });
+  const msgObj = {
+    name: name || 'Admin',
+    message,
+    color: color || '#ff4040',
+    timestamp: Date.now(),
+  };
+  messages.push(msgObj);
+  res.json(msgObj);
+});
+
+// ----------- Heartbeat API -----------
+app.post('/heartbeat', (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+  heartbeats[id] = Date.now();
   res.json({ success: true });
 });
 
-// Render provides PORT
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.get('/online-count', (req, res) => {
+  const now = Date.now();
+  // Consider active if heartbeat within last 15 seconds
+  const count = Object.values(heartbeats).filter(ts => now - ts < 15000).length;
+  res.json({ count });
+});
+
+// Optional: cleanup old heartbeats every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const id in heartbeats) {
+    if (now - heartbeats[id] > 60000) delete heartbeats[id];
+  }
+}, 60000);
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
