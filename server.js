@@ -10,21 +10,30 @@ app.use(express.json());
 
 /* ========== STATE ========== */
 let messages = []; // { id, name, message, color, timestamp }
-let onlineCount = 0;
+let onlineUsers = new Map(); // ip -> lastSeen timestamp
 
-/* ========== ENDPOINTS ========== */
+/* ========== HELPERS ========== */
+function cleanOnline() {
+  const now = Date.now();
+  // Remove users inactive for >30s
+  for (const [ip, ts] of onlineUsers.entries()) {
+    if (now - ts > 30000) onlineUsers.delete(ip);
+  }
+}
 
-// Root page for Uptime Robot / friendly homepage
+/* ========== ROUTES ========== */
+
+// Homepage for uptime checks
 app.get('/', (req, res) => {
-  res.send('<h2>Global Messages API is running ✅</h2><p>Use /messages and /online-count endpoints.</p>');
+  res.send('<h2>Global Messages API Running ✅</h2><p>Use /messages and /online-count endpoints.</p>');
 });
 
-// Get all messages
+// Get messages
 app.get('/messages', (req, res) => {
   res.json(messages);
 });
 
-// Post a new message
+// Post a message
 app.post('/messages', (req, res) => {
   const { name, message, color } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
@@ -37,24 +46,22 @@ app.post('/messages', (req, res) => {
     timestamp: Date.now()
   };
   messages.push(newMessage);
-
-  // Keep last 200 messages to avoid memory overflow
-  if (messages.length > 200) messages.shift();
-
+  if (messages.length > 200) messages.shift(); // keep last 200
   res.json({ success: true, message: newMessage });
+});
+
+// Track online users (ping from snippet)
+app.post('/ping', (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  onlineUsers.set(ip, Date.now());
+  cleanOnline();
+  res.json({ success: true });
 });
 
 // Get online count
 app.get('/online-count', (req, res) => {
-  res.json({ count: onlineCount });
-});
-
-// For simulation: you can update onlineCount periodically or track via snippet pings
-// Here we just increment it every request for testing
-app.post('/online-count', (req, res) => {
-  const { count } = req.body;
-  if (typeof count === 'number') onlineCount = count;
-  res.json({ success: true, count: onlineCount });
+  cleanOnline();
+  res.json({ count: onlineUsers.size });
 });
 
 /* ========== START SERVER ========== */
