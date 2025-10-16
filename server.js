@@ -1,63 +1,74 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 
-/* ---------------- Messages ---------------- */
-let messages = [];
+const DATA_FILE = path.join(__dirname, 'messages.json');
 
+// Helper to load messages from JSON
+function loadMessages() {
+  if (!fs.existsSync(DATA_FILE)) return [];
+  const data = fs.readFileSync(DATA_FILE, 'utf-8');
+  try {
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+// Helper to save messages to JSON
+function saveMessages(messages) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(messages, null, 2));
+}
+
+// Generate a unique ID using crypto
+function uuidv4() {
+  return crypto.randomUUID();
+}
+
+// In-memory online users tracking
+const onlineUsers = new Set();
+
+// API endpoints
 app.get('/messages', (req, res) => {
+  const messages = loadMessages();
   res.json(messages);
 });
 
 app.post('/messages', (req, res) => {
   const { name, message, color } = req.body;
-  const msg = {
+  if (!message) return res.status(400).json({ error: 'Message required' });
+
+  const messages = loadMessages();
+  const msgObj = {
     _id: uuidv4(),
     name: name || 'Admin',
-    message: message || '',
+    message,
     color: color || '#ff4040',
     timestamp: Date.now()
   };
-  messages.push(msg);
-  res.json(msg);
+
+  messages.push(msgObj);
+  saveMessages(messages);
+
+  res.json({ success: true, message: msgObj });
 });
 
-/* ---------------- Online users ---------------- */
-let sessions = new Map(); // sessionId -> lastSeen timestamp
-const ONLINE_TIMEOUT = 10000; // consider offline if not seen for 10s
-
-// Endpoint for snippet to ping every few seconds
-app.post('/online', (req, res) => {
-  let { sessionId } = req.body;
-  if(!sessionId) sessionId = uuidv4();
-
-  sessions.set(sessionId, Date.now());
-
-  // Clean up expired sessions
-  for(const [id, ts] of sessions) {
-    if(Date.now() - ts > ONLINE_TIMEOUT) sessions.delete(id);
-  }
-
-  res.json({ sessionId, online: sessions.size });
-});
-
-// Admin panel endpoint
 app.get('/online-count', (req, res) => {
-  // Clean up expired sessions
-  for(const [id, ts] of sessions) {
-    if(Date.now() - ts > ONLINE_TIMEOUT) sessions.delete(id);
-  }
-  res.json({ count: sessions.size });
+  // Optionally, you can pass a query ?add=name to track users
+  const add = req.query.add;
+  if (add) onlineUsers.add(add);
+  res.json({ online: onlineUsers.size, count: onlineUsers.size });
 });
 
-/* ---------------- Start server ---------------- */
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
