@@ -1,56 +1,63 @@
 const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
+const { v4: uuidv4 } = require('uuid');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// In-memory storage
-let messages = []; // { name, message, color, timestamp }
-let heartbeats = {}; // { visitorId: lastSeenTimestamp }
+/* ---------------- Messages ---------------- */
+let messages = [];
 
-// ----------- Messages API -----------
 app.get('/messages', (req, res) => {
   res.json(messages);
 });
 
 app.post('/messages', (req, res) => {
   const { name, message, color } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
-  const msgObj = {
+  const msg = {
+    _id: uuidv4(),
     name: name || 'Admin',
-    message,
+    message: message || '',
     color: color || '#ff4040',
-    timestamp: Date.now(),
+    timestamp: Date.now()
   };
-  messages.push(msgObj);
-  res.json(msgObj);
+  messages.push(msg);
+  res.json(msg);
 });
 
-// ----------- Heartbeat API -----------
-app.post('/heartbeat', (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'Missing id' });
-  heartbeats[id] = Date.now();
-  res.json({ success: true });
-});
+/* ---------------- Online users ---------------- */
+let sessions = new Map(); // sessionId -> lastSeen timestamp
+const ONLINE_TIMEOUT = 10000; // consider offline if not seen for 10s
 
-app.get('/online-count', (req, res) => {
-  const now = Date.now();
-  // Consider active if heartbeat within last 15 seconds
-  const count = Object.values(heartbeats).filter(ts => now - ts < 15000).length;
-  res.json({ count });
-});
+// Endpoint for snippet to ping every few seconds
+app.post('/online', (req, res) => {
+  let { sessionId } = req.body;
+  if(!sessionId) sessionId = uuidv4();
 
-// Optional: cleanup old heartbeats every minute
-setInterval(() => {
-  const now = Date.now();
-  for (const id in heartbeats) {
-    if (now - heartbeats[id] > 60000) delete heartbeats[id];
+  sessions.set(sessionId, Date.now());
+
+  // Clean up expired sessions
+  for(const [id, ts] of sessions) {
+    if(Date.now() - ts > ONLINE_TIMEOUT) sessions.delete(id);
   }
-}, 60000);
 
+  res.json({ sessionId, online: sessions.size });
+});
+
+// Admin panel endpoint
+app.get('/online-count', (req, res) => {
+  // Clean up expired sessions
+  for(const [id, ts] of sessions) {
+    if(Date.now() - ts > ONLINE_TIMEOUT) sessions.delete(id);
+  }
+  res.json({ count: sessions.size });
+});
+
+/* ---------------- Start server ---------------- */
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
