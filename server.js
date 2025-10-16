@@ -9,63 +9,55 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
-/* ---------- State ---------- */
-let messages = []; // { id, name, message, color, ts }
-let onlineUsers = new Map(); // uid -> lastSeen timestamp
+// ===== STATE =====
+let messages = []; // stores { id, name, message, color, timestamp }
+let onlineUsers = new Map(); // userId -> lastSeen timestamp
 
-/* ---------- Helpers ---------- */
-function cleanupOnlineUsers() {
-  const now = Date.now();
-  for (const [uid, ts] of onlineUsers.entries()) {
-    if (now - ts > 30000) { // 30 seconds timeout
-      onlineUsers.delete(uid);
-    }
-  }
-}
-
-/* ---------- Endpoints ---------- */
-
-// Receive messages
-app.post('/messages', (req, res) => {
-  const { name, message, color } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
-
-  const msg = {
-    id: uuidv4(),
-    name: name || 'Admin',
-    message,
-    color: color || '#ff4040',
-    ts: Date.now()
-  };
-  messages.push(msg);
-
-  // Keep max 200 messages
-  if (messages.length > 200) messages.shift();
-
-  res.json(msg);
+// ===== MIDDLEWARE TO TRACK ONLINE USERS =====
+app.use((req, res, next) => {
+  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  onlineUsers.set(ip, Date.now());
+  next();
 });
 
-// Fetch messages
+// ===== CLEANUP STALE ONLINE USERS =====
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of onlineUsers.entries()) {
+    if (now - ts > 30000) onlineUsers.delete(key); // 30 sec timeout
+  }
+}, 5000);
+
+// ===== ROUTES =====
+
+// GET messages
 app.get('/messages', (req, res) => {
   res.json(messages);
 });
 
-// Track online users
-app.post('/online', (req, res) => {
-  let { uid } = req.body;
-  if (!uid) uid = uuidv4();
-  onlineUsers.set(uid, Date.now());
-  cleanupOnlineUsers();
-  res.json({ uid, online: onlineUsers.size });
+// POST new message
+app.post('/messages', (req, res) => {
+  const { name, message, color } = req.body;
+  if (!message || !name) return res.status(400).json({ error: 'Name and message required' });
+
+  const msg = {
+    id: uuidv4(),
+    name,
+    message,
+    color: color || '#ff4040',
+    timestamp: Date.now()
+  };
+  messages.push(msg);
+  if (messages.length > 500) messages.shift(); // keep last 500 messages
+  res.json({ success: true, message: msg });
 });
 
-// Get online count
+// GET online count
 app.get('/online-count', (req, res) => {
-  cleanupOnlineUsers();
   res.json({ count: onlineUsers.size });
 });
 
-/* ---------- Start server ---------- */
+// ===== START SERVER =====
 app.listen(PORT, () => {
   console.log(`Global Broadcast backend running on port ${PORT}`);
 });
