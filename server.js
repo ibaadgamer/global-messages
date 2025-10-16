@@ -9,7 +9,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 /* ---------- In-memory storage ---------- */
-let messages = []; // { id, name, message, duration, ts }
+let messages = []; // { id, name, message, color, duration, timestamp }
 let onlineDevices = new Map(); // UID => lastPing (ms)
 
 /* ---------- Helpers ---------- */
@@ -24,16 +24,24 @@ function cleanupOnline(){
 
 // GET all messages
 app.get('/messages', (req,res)=>{
-  res.json(messages.slice(-100)); // return last 100 messages
+  const last100 = messages.slice(-100);
+  // send JSON fields the snippet expects
+  const out = last100.map(m=>({
+    name: m.name,
+    message: m.message,
+    color: m.color || '#ff4040',
+    timestamp: m.timestamp
+  }));
+  res.json(out);
 });
 
 // POST new message
 app.post('/messages', (req,res)=>{
-  const { name, message, duration } = req.body;
+  const { name, message, color, duration } = req.body;
   if(!message) return res.status(400).json({error:'Message required'});
   const id = Date.now() + '-' + Math.random().toString(36).substr(2,5);
-  const ts = Date.now();
-  messages.push({ id, name: name||'Admin', message, duration: duration||7, ts });
+  const timestamp = Date.now();
+  messages.push({ id, name: name||'Admin', message, color: color||'#ff4040', duration: duration||7, timestamp });
   res.json({success:true});
 });
 
