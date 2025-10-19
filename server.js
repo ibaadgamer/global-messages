@@ -1,70 +1,61 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const bodyParser = require('body-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// -------------------- MIDDLEWARE --------------------
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
+app.use(express.static('public')); // serve homepage and snippet
 
-/* ========== STATE ========== */
-let messages = []; // { id, name, message, color, timestamp }
-let onlineUsers = new Map(); // ip -> lastSeen timestamp
+// -------------------- STATE --------------------
+let messages = []; // { id, name, message, duration, ts }
+let onlineClients = new Map(); // sessionId -> lastSeen
 
-/* ========== HELPERS ========== */
-function cleanOnline() {
-  const now = Date.now();
-  // Remove users inactive for >30s
-  for (const [ip, ts] of onlineUsers.entries()) {
-    if (now - ts > 30000) onlineUsers.delete(ip);
-  }
-}
+// -------------------- ROUTES --------------------
 
-/* ========== ROUTES ========== */
-
-// Homepage for uptime checks
+// Basic homepage so uptime monitors keep app alive
 app.get('/', (req, res) => {
-  res.send('<h2>Global Messages API Running ✅</h2><p>Use /messages and /online-count endpoints.</p>');
+  res.send('<h1>Global Broadcast Backend Online</h1><p>Use /messages and /broadcast endpoints.</p>');
 });
 
-// Get messages
+// Get broadcast messages
 app.get('/messages', (req, res) => {
-  res.json(messages);
+  res.json(messages.slice(-50)); // return last 50 messages
 });
 
-// Post a message
-app.post('/messages', (req, res) => {
-  const { name, message, color } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message is required' });
-
-  const newMessage = {
+// Send a broadcast (from admin panel)
+app.post('/broadcast', (req, res) => {
+  const { name, message, duration } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message required' });
+  const msg = {
     id: uuidv4(),
     name: name || 'Admin',
     message,
-    color: color || '#ff4040',
-    timestamp: Date.now()
+    duration: parseInt(duration) || 7,
+    ts: Date.now()
   };
-  messages.push(newMessage);
-  if (messages.length > 200) messages.shift(); // keep last 200
-  res.json({ success: true, message: newMessage });
-});
-
-// Track online users (ping from snippet)
-app.post('/ping', (req, res) => {
-  const ip = req.ip || req.connection.remoteAddress;
-  onlineUsers.set(ip, Date.now());
-  cleanOnline();
+  messages.push(msg);
   res.json({ success: true });
 });
 
-// Get online count
-app.get('/online-count', (req, res) => {
-  cleanOnline();
-  res.json({ count: onlineUsers.size });
+// Track online clients
+app.get('/online', (req, res) => {
+  const sessionId = req.query.sid || uuidv4();
+  onlineClients.set(sessionId, Date.now());
+  // Remove clients inactive for more than 60 seconds
+  const now = Date.now();
+  for (const [sid, lastSeen] of onlineClients.entries()) {
+    if (now - lastSeen > 60000) onlineClients.delete(sid);
+  }
+  res.json({ online: onlineClients.size, devices: Array.from(onlineClients.keys()).map(sid => ({ sid })) });
 });
 
-/* ========== START SERVER ========== */
+// -------------------- START SERVER --------------------
 app.listen(PORT, () => {
-  console.log(`Global Messages API running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
