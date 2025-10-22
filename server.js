@@ -1,61 +1,76 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const bodyParser = require('body-parser');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// -------------------- MIDDLEWARE --------------------
 app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static('public')); // serve homepage and snippet
+app.use(express.json());
 
-// -------------------- STATE --------------------
-let messages = []; // { id, name, message, duration, ts }
-let onlineClients = new Map(); // sessionId -> lastSeen
-
-// -------------------- ROUTES --------------------
-
-// Basic homepage so uptime monitors keep app alive
-app.get('/', (req, res) => {
-  res.send('<h1>Global Broadcast Backend Online</h1><p>Use /messages and /broadcast endpoints.</p>');
+// ====== EXISTING ONLINE SYSTEM (leave as-is) ======
+let onlineDevices = new Map();
+app.post('/online', (req, res) => {
+  const { deviceId } = req.body;
+  if (deviceId) {
+    onlineDevices.set(deviceId, Date.now());
+  }
+  res.json({ ok: true });
 });
+app.get('/online-count', (req, res) => {
+  const now = Date.now();
+  for (const [id, last] of onlineDevices) {
+    if (now - last > 20000) onlineDevices.delete(id);
+  }
+  res.json({ online: onlineDevices.size });
+});
+// =================================================
 
-// Get broadcast messages
+// ====== FIXED MESSAGING SYSTEM ======
+let messages = [];
+
+// Get all messages
 app.get('/messages', (req, res) => {
-  res.json(messages.slice(-50)); // return last 50 messages
+  res.json(messages);
 });
 
-// Send a broadcast (from admin panel)
-app.post('/broadcast', (req, res) => {
-  const { name, message, duration } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
-  const msg = {
+// Post (send) a message from admin
+app.post('/send', (req, res) => {
+  const { name, message, duration, type } = req.body;
+
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'Message text is required.' });
+  }
+
+  const newMessage = {
     id: uuidv4(),
     name: name || 'Admin',
-    message,
-    duration: parseInt(duration) || 7,
-    ts: Date.now()
+    message: message.trim(),
+    duration: duration || 7000,
+    type: type || 'default',
+    timestamp: Date.now()
   };
-  messages.push(msg);
+
+  messages.push(newMessage);
+
+  // Keep only the latest 100 messages to prevent memory bloat
+  if (messages.length > 100) messages.shift();
+
+  console.log(`[Message] ${newMessage.name}: ${newMessage.message}`);
+  res.json({ success: true, message: newMessage });
+});
+
+// Optional clear endpoint for debugging
+app.post('/clear-messages', (req, res) => {
+  messages = [];
   res.json({ success: true });
 });
 
-// Track online clients
-app.get('/online', (req, res) => {
-  const sessionId = req.query.sid || uuidv4();
-  onlineClients.set(sessionId, Date.now());
-  // Remove clients inactive for more than 60 seconds
-  const now = Date.now();
-  for (const [sid, lastSeen] of onlineClients.entries()) {
-    if (now - lastSeen > 60000) onlineClients.delete(sid);
-  }
-  res.json({ online: onlineClients.size, devices: Array.from(onlineClients.keys()).map(sid => ({ sid })) });
+// =================================================
+
+// Simple homepage to keep Render alive
+app.get('/', (req, res) => {
+  res.send('<h1>Global Messages Server</h1><p>Server is running fine.</p>');
 });
 
-// -------------------- START SERVER --------------------
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
