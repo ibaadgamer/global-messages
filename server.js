@@ -1,76 +1,100 @@
-const express = require('express');
-const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+import express from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import bodyParser from "body-parser";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 10000;
 
-// ====== EXISTING ONLINE SYSTEM (leave as-is) ======
-let onlineDevices = new Map();
-app.post('/online', (req, res) => {
+// === MONGODB SETUP ===
+// You can use your own MongoDB connection string here
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://<YOUR_MONGO_URI>";
+mongoose
+  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+// === MIDDLEWARE ===
+app.use(cors());
+app.use(bodyParser.json());
+
+// === SCHEMAS ===
+const messageSchema = new mongoose.Schema({
+  name: String,
+  message: String,
+  timestamp: { type: Date, default: Date.now },
+});
+const Message = mongoose.model("Message", messageSchema);
+
+// In-memory online tracking
+let onlineDevices = new Map(); // key: deviceId, value: timestamp
+
+// === ROUTES ===
+
+// Root check
+app.get("/", (req, res) => {
+  res.send("🌍 Global Broadcast Server is running!");
+});
+
+// POST new message
+app.post("/messages", async (req, res) => {
+  try {
+    const { name, message } = req.body;
+    if (!message || !name)
+      return res.status(400).json({ error: "Missing name or message" });
+
+    const msg = new Message({ name, message });
+    await msg.save();
+    res.status(201).json({ success: true, message: msg });
+  } catch (err) {
+    console.error("Error saving message:", err);
+    res.status(500).json({ error: "Failed to save message" });
+  }
+});
+
+// GET all messages (latest 100)
+app.get("/messages", async (req, res) => {
+  try {
+    const messages = await Message.find().sort({ timestamp: -1 }).limit(100);
+    res.json(messages);
+  } catch (err) {
+    console.error("Error fetching messages:", err);
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+// Online device ping route
+app.post("/ping", (req, res) => {
   const { deviceId } = req.body;
   if (deviceId) {
     onlineDevices.set(deviceId, Date.now());
   }
-  res.json({ ok: true });
-});
-app.get('/online-count', (req, res) => {
-  const now = Date.now();
-  for (const [id, last] of onlineDevices) {
-    if (now - last > 20000) onlineDevices.delete(id);
-  }
-  res.json({ online: onlineDevices.size });
-});
-// =================================================
-
-// ====== FIXED MESSAGING SYSTEM ======
-let messages = [];
-
-// Get all messages
-app.get('/messages', (req, res) => {
-  res.json(messages);
-});
-
-// Post (send) a message from admin
-app.post('/send', (req, res) => {
-  const { name, message, duration, type } = req.body;
-
-  if (!message || typeof message !== 'string' || !message.trim()) {
-    return res.status(400).json({ error: 'Message text is required.' });
-  }
-
-  const newMessage = {
-    id: uuidv4(),
-    name: name || 'Admin',
-    message: message.trim(),
-    duration: duration || 7000,
-    type: type || 'default',
-    timestamp: Date.now()
-  };
-
-  messages.push(newMessage);
-
-  // Keep only the latest 100 messages to prevent memory bloat
-  if (messages.length > 100) messages.shift();
-
-  console.log(`[Message] ${newMessage.name}: ${newMessage.message}`);
-  res.json({ success: true, message: newMessage });
-});
-
-// Optional clear endpoint for debugging
-app.post('/clear-messages', (req, res) => {
-  messages = [];
   res.json({ success: true });
 });
 
-// =================================================
-
-// Simple homepage to keep Render alive
-app.get('/', (req, res) => {
-  res.send('<h1>Global Messages Server</h1><p>Server is running fine.</p>');
+// Online count
+app.get("/online-count", (req, res) => {
+  const now = Date.now();
+  // Remove devices inactive for 20 seconds
+  for (const [id, ts] of onlineDevices.entries()) {
+    if (now - ts > 20000) onlineDevices.delete(id);
+  }
+  res.json({ count: onlineDevices.size });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+// Optional: Get list of online devices
+app.get("/devices", (req, res) => {
+  const now = Date.now();
+  const list = [];
+  for (const [id, ts] of onlineDevices.entries()) {
+    if (now - ts <= 20000) {
+      list.push({ id, lastSeen: ts });
+    }
+  }
+  res.json(list);
+});
+
+// === START SERVER ===
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
