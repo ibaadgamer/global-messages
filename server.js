@@ -1,38 +1,37 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
 
-const app = express();
+// =================== CONFIG ===================
 const PORT = process.env.PORT || 3000;
+const MONGO_URL = 'mongodb+srv://admin:Global123!@globalbroadcast.pmtltpk.mongodb.net/globalbroadcast?retryWrites=true&w=majority';
 
-// ======================
-// CONFIG
-// ======================
-const MONGO_URL = 'mongodb+srv://admin:Global123!@cluster0.lxlpnkw.mongodb.net/globalbroadcast?retryWrites=true&w=majority';
-
-// ======================
-// MIDDLEWARE
-// ======================
+// =================== INIT ===================
+const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// ======================
-// MONGOOSE MODELS
-// ======================
+// =================== MONGOOSE MODELS ===================
+mongoose.set('strictQuery', true);
+
 const messageSchema = new mongoose.Schema({
-  name: { type: String, default: 'Admin' },
-  message: { type: String, required: true },
+  name: String,
+  message: String,
   timestamp: { type: Date, default: Date.now }
 });
-
 const Message = mongoose.model('Message', messageSchema);
 
-// ======================
-// ROUTES
-// ======================
+const deviceSchema = new mongoose.Schema({
+  deviceId: String,
+  lastSeen: { type: Date, default: Date.now },
+  displayName: String
+});
+const Device = mongoose.model('Device', deviceSchema);
 
-// GET all messages
+// =================== ROUTES ===================
+
+// Get all messages
 app.get('/messages', async (req, res) => {
   try {
     const messages = await Message.find().sort({ timestamp: -1 }).limit(50);
@@ -43,28 +42,62 @@ app.get('/messages', async (req, res) => {
   }
 });
 
-// POST new message
+// Post a new message
 app.post('/messages', async (req, res) => {
   try {
     const { name, message } = req.body;
-    if (!message) return res.status(400).json({ error: 'Message required' });
-    const newMessage = await Message.create({ name, message });
-    res.json(newMessage);
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+
+    const msg = new Message({ name: name || 'Admin', message });
+    await msg.save();
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to send message' });
   }
 });
 
-// GET online count (mocked for now)
-let onlineCount = 0;
-app.get('/online-count', (req, res) => {
-  res.json({ count: onlineCount });
+// Online count
+app.get('/online-count', async (req, res) => {
+  try {
+    const onlineCount = await Device.countDocuments({ lastSeen: { $gte: new Date(Date.now() - 60000) } });
+    res.json({ count: onlineCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ count: 0 });
+  }
 });
 
-// ======================
-// CONNECT TO MONGO & START SERVER
-// ======================
+// Update or register device
+app.post('/device', async (req, res) => {
+  try {
+    const { deviceId, displayName } = req.body;
+    if (!deviceId) return res.status(400).json({ error: 'deviceId is required' });
+
+    const device = await Device.findOneAndUpdate(
+      { deviceId },
+      { lastSeen: new Date(), displayName: displayName || deviceId },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update device' });
+  }
+});
+
+// Get all devices
+app.get('/devices', async (req, res) => {
+  try {
+    const devices = await Device.find().sort({ lastSeen: -1 });
+    res.json(devices);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch devices' });
+  }
+});
+
+// =================== START SERVER ===================
 mongoose.connect(MONGO_URL, {
   useNewUrlParser: true,
   useUnifiedTopology: true
