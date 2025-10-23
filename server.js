@@ -1,85 +1,76 @@
 // server.js
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ======================
+// CONFIG
+// ======================
+const MONGO_URL = 'mongodb+srv://admin:Global123!@cluster0.lxlpnkw.mongodb.net/globalbroadcast?retryWrites=true&w=majority';
+
+// ======================
+// MIDDLEWARE
+// ======================
 app.use(cors());
 app.use(express.json());
 
-// ---------- CONFIG ----------
-const PORT = process.env.PORT || 3000;
-const MONGO_URL = "mongodb+srv://admin:Global123!@cluster0.lxlpnkw.mongodb.net/global-broadcast?retryWrites=true&w=majority";
-
-// ---------- CONNECT TO MONGO ----------
-mongoose.connect(MONGO_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log("MongoDB connected"))
-  .catch(err => console.error("MongoDB connection error:", err));
-
-// ---------- SCHEMAS ----------
+// ======================
+// MONGOOSE MODELS
+// ======================
 const messageSchema = new mongoose.Schema({
-  name: { type: String, default: "Admin" },
+  name: { type: String, default: 'Admin' },
   message: { type: String, required: true },
   timestamp: { type: Date, default: Date.now }
 });
 
-const Message = mongoose.model("Message", messageSchema);
+const Message = mongoose.model('Message', messageSchema);
 
-// ---------- IN-MEMORY ONLINE DEVICES ----------
-let onlineDevices = new Map();
+// ======================
+// ROUTES
+// ======================
 
-// ---------- ROUTES ----------
-
-// Get all messages
-app.get("/messages", async (req, res) => {
+// GET all messages
+app.get('/messages', async (req, res) => {
   try {
     const messages = await Message.find().sort({ timestamp: -1 }).limit(50);
     res.json(messages);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to get messages" });
+    res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
 
-// Post a new message
-app.post("/messages", async (req, res) => {
+// POST new message
+app.post('/messages', async (req, res) => {
   try {
     const { name, message } = req.body;
-    if (!message) return res.status(400).json({ error: "Message required" });
-
-    const msg = new Message({ name: name || "Admin", message });
-    await msg.save();
-    res.json(msg);
+    if (!message) return res.status(400).json({ error: 'Message required' });
+    const newMessage = await Message.create({ name, message });
+    res.json(newMessage);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to save message" });
+    res.status(500).json({ error: 'Failed to send message' });
   }
 });
 
-// Online count (heartbeat from snippet)
-app.get("/online-count", (req, res) => {
-  res.json({ count: onlineDevices.size });
+// GET online count (mocked for now)
+let onlineCount = 0;
+app.get('/online-count', (req, res) => {
+  res.json({ count: onlineCount });
 });
 
-// Snippet sends heartbeat
-app.post("/heartbeat", (req, res) => {
-  const { deviceId } = req.body;
-  if (!deviceId) return res.status(400).json({ error: "deviceId required" });
-  onlineDevices.set(deviceId, Date.now());
-  res.json({ status: "ok" });
-});
-
-// Optional: periodically clean old devices
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, ts] of onlineDevices.entries()) {
-    if (now - ts > 30000) onlineDevices.delete(id); // 30 seconds timeout
-  }
-}, 5000);
-
-// ---------- START SERVER ----------
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// ======================
+// CONNECT TO MONGO & START SERVER
+// ======================
+mongoose.connect(MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => {
+  console.log('✅ MongoDB connected successfully');
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}).catch(err => {
+  console.error('❌ MongoDB connection error:', err);
 });
