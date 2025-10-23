@@ -1,13 +1,12 @@
-import express from "express";
-import cors from "cors";
-import mongoose from "mongoose";
-import bodyParser from "body-parser";
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const bodyParser = require("body-parser");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // === MONGODB SETUP ===
-// You can use your own MongoDB connection string here
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://<YOUR_MONGO_URI>";
 mongoose
   .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -26,17 +25,15 @@ const messageSchema = new mongoose.Schema({
 });
 const Message = mongoose.model("Message", messageSchema);
 
-// In-memory online tracking
+// === ONLINE TRACKING ===
 let onlineDevices = new Map(); // key: deviceId, value: timestamp
 
 // === ROUTES ===
-
-// Root check
 app.get("/", (req, res) => {
   res.send("🌍 Global Broadcast Server is running!");
 });
 
-// POST new message
+// Create a new message
 app.post("/messages", async (req, res) => {
   try {
     const { name, message } = req.body;
@@ -52,7 +49,7 @@ app.post("/messages", async (req, res) => {
   }
 });
 
-// GET all messages (latest 100)
+// Get all messages
 app.get("/messages", async (req, res) => {
   try {
     const messages = await Message.find().sort({ timestamp: -1 }).limit(100);
@@ -63,7 +60,7 @@ app.get("/messages", async (req, res) => {
   }
 });
 
-// Online device ping route
+// Ping endpoint (used by snippets)
 app.post("/ping", (req, res) => {
   const { deviceId } = req.body;
   if (deviceId) {
@@ -75,21 +72,18 @@ app.post("/ping", (req, res) => {
 // Online count
 app.get("/online-count", (req, res) => {
   const now = Date.now();
-  // Remove devices inactive for 20 seconds
   for (const [id, ts] of onlineDevices.entries()) {
     if (now - ts > 20000) onlineDevices.delete(id);
   }
   res.json({ count: onlineDevices.size });
 });
 
-// Optional: Get list of online devices
+// List all online devices
 app.get("/devices", (req, res) => {
   const now = Date.now();
   const list = [];
   for (const [id, ts] of onlineDevices.entries()) {
-    if (now - ts <= 20000) {
-      list.push({ id, lastSeen: ts });
-    }
+    if (now - ts <= 20000) list.push({ id, lastSeen: ts });
   }
   res.json(list);
 });
